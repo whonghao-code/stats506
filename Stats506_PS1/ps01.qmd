@@ -1,0 +1,283 @@
+---
+title: "Stats 506 Problem Set 1"
+author: "Honghao Wang"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+---
+
+## **Problem 1 - Exploratory Analysis of Soybean Cultivars**
+
+\(a\) I imported the data.csv file into a data.frame. Based on the documentation in the .ods file, I assigned the appropriate column names to the dataset.
+
+```{r}
+soybean_data <- read.csv("data.csv", header = TRUE)
+
+colnames(soybean_data) <- c("Season", "Cultivar", "Repetition", "PH", "IFP", "NLP", "NGP", "NGL", "NS", "MHG", "GY")
+
+head(soybean_data)
+```
+
+\(b\) The R output below verifies that there are exactly 320 observations and 40 distinct cultivars. The unique values in the Season column show that data was collected from exactly two seasons. A frequency table of observations per season is also provided. Based on the table, there are exactly 160 observations for each season.
+
+```{r}
+cat("Number of observations:", nrow(soybean_data), "\n")
+
+cat("Distinct cultivars:", length(unique(soybean_data$Cultivar)), "\n")
+
+cat("Seasons present:", unique(soybean_data$Season), "\n")
+
+table(Season = soybean_data$Season)
+```
+
+\(c\)
+
+1.  The overall correlation between plant height (PH) and grain yield (GY) is approximately 0.123.
+2.  The correlation is higher in Season 1 (0.231) compared to Season 2 (-0.023).
+3.  The grain yield (GY) for the observation with the greatest plant height is 3304.678.
+4.  Approximately 47.19% of the observations have a thousand seed weight (MHG) greater than the overall average.
+5.  The cultivar with the highest average grain yield is 98R30 CE.
+
+```{r}
+# 1. Overall correlation between PH and GY
+cor_overall <- cor(soybean_data$PH, soybean_data$GY)
+cat("1. Overall Correlation:", cor_overall, "\n")
+
+# 2. Correlation by season
+cor_s1 <- cor(soybean_data$PH[soybean_data$Season == 1], soybean_data$GY[soybean_data$Season == 1])
+cor_s2 <- cor(soybean_data$PH[soybean_data$Season == 2], soybean_data$GY[soybean_data$Season == 2])
+cat("2. Correlation for Season 1:", cor_s1, "| Season 2:", cor_s2, "\n")
+
+# 3. GY of the observation with the greatest PH
+max_ph_index <- which.max(soybean_data$PH)
+cat("3. GY for max PH:", soybean_data$GY[max_ph_index], "\n")
+
+# 4. Percentage of MHG greater than overall average MHG
+avg_mhg <- mean(soybean_data$MHG)
+pct_greater <- mean(soybean_data$MHG > avg_mhg) * 100
+cat("4. Percentage MHG > average:", round(pct_greater, 2), "%\n")
+
+# 5. Cultivar with highest average GY
+gy_by_cultivar <- aggregate(GY ~ Cultivar, data = soybean_data, FUN = mean)
+best_cultivar <- gy_by_cultivar$Cultivar[which.max(gy_by_cultivar$GY)]
+cat("5. Cultivar with highest average GY:", best_cultivar, "\n")
+```
+
+\(d\) The table below displays the average values for each quantitative variable. The first row represents the overall dataset averages, while the subsequent rows display the averages for Season 1 and Season 2, respectively.
+
+```{r}
+# Select quantitative variables
+quant_vars <- soybean_data[, c("PH", "IFP", "NLP", "NGP", "NGL", "NS", "MHG", "GY")]
+
+# Calculate means
+overall_means <- colMeans(quant_vars)
+season1_means <- colMeans(quant_vars[soybean_data$Season == 1, ])
+season2_means <- colMeans(quant_vars[soybean_data$Season == 2, ])
+
+# Combine into a table
+avg_table <- rbind(Overall_Average = overall_means, 
+                   Season_1_Average = season1_means, 
+                   Season_2_Average = season2_means)
+print(avg_table)
+```
+
+\(e\)
+
+**Null Hypothesis (H0)**: There is no difference in the true mean grain yield (GY) between Season 1 and Season 2.
+
+**Alternative Hypothesis (Ha)**: There is a difference in the true mean grain yield (GY) between Season 1 and Season 2.
+
+**Interpretation**: Based on the Welch Two Sample t-test output, the p-value is 0.7255, which is much greater than the standard significance level of 0.05. Therefore, we fail to reject the null hypothesis. There is not enough statistical evidence to conclude that the average grain yield differs significantly between the two seasons.
+
+```{r}
+# Standard t-test function
+t.test(GY ~ Season, data = soybean_data)
+
+# --- Minor Extra Credit: Manual calculation of p-value ---
+gy_s1 <- soybean_data$GY[soybean_data$Season == 1]
+gy_s2 <- soybean_data$GY[soybean_data$Season == 2]
+
+n1 <- length(gy_s1); n2 <- length(gy_s2)
+m1 <- mean(gy_s1); m2 <- mean(gy_s2)
+v1 <- var(gy_s1); v2 <- var(gy_s2)
+
+t_stat <- (m1 - m2) / sqrt((v1/n1) + (v2/n2))
+df <- ((v1/n1 + v2/n2)^2) / ( (v1/n1)^2/(n1-1) + (v2/n2)^2/(n2-1) )
+p_value <- 2 * pt(-abs(t_stat), df = df)
+
+cat("\n--- Extra Credit: Manual Calculation ---\n")
+cat("t-statistic:", t_stat, "\n")
+cat("p-value:", p_value, "\n")
+```
+
+## **Problem 2 - Adult Income Dataset**
+
+\(a\) & (b) I imported the adult.data file into a data frame and assigned appropriate column names based on the dataset's documentation. The missing values denoted by " ?" were explicitly converted to NA during the import process. The variable names were then cleaned and converted to lowercase for consistency.
+
+```{r}
+adult_url_names <- c("age", "workclass", "fnlwgt", "education", "education_num",
+                     "marital_status", "occupation", "relationship", "race", 
+                     "sex", "capital_gain", "capital_loss", "hours_per_week", 
+                     "native_country", "income")
+
+adult_data <- read.csv("adult.data", header = FALSE, col.names = adult_url_names, na.strings = " ?")
+
+colnames(adult_data) <- tolower(colnames(adult_data))
+head(adult_data)
+```
+
+\(c\) The output below displays the number of missing observations for each variable. Specifically, workclass has 1,836 missing values, occupation has 1,843, and native_country has 583. All other variables have 0 missing observations.
+
+```{r}
+colSums(is.na(adult_data))
+```
+
+\(d\) The sample size before filtering was 32,561 observations. After restricting the sample to individuals working at least 10 hours per week, the sample size was reduced to 32,103 observations.
+
+```{r}
+nrow_before <- nrow(adult_data)
+adult_data_filtered <- subset(adult_data, hours_per_week >= 10)
+nrow_after <- nrow(adult_data_filtered)
+
+cat("Sample size before filtering:", nrow_before, "\n")
+cat("Sample size after filtering:", nrow_after, "\n")
+```
+
+\(e\) A total of 2,230 observations were removed due to missing values in occupation, workclass, or native_country. Removing these is necessary because leaving missing categories can cause unexpected behavior in statistical modeling, and imputing these specific categorical variables might introduce significant bias.
+
+```{r}
+nrow_before_2e <- nrow(adult_data_filtered)
+
+adult_data_clean <- subset(adult_data_filtered, 
+                           !is.na(occupation) & !is.na(workclass) & !is.na(native_country))
+
+nrow_after_2e <- nrow(adult_data_clean)
+cat("Removed rows due to missingness:", nrow_before_2e - nrow_after_2e, "\n")
+```
+
+\(f\) Observations with an age less than 18, an age greater than 90, or an education level of "Preschool" were eliminated. This step removed an additional 350 observations from the dataset.
+
+```{r}
+nrow_before_2f <- nrow(adult_data_clean)
+
+adult_data_final <- subset(adult_data_clean, 
+                           age >= 18 & age <= 90 & 
+                             trimws(education) != "Preschool")
+
+nrow_after_2f <- nrow(adult_data_final)
+cat("Rows removed in step 2f:", nrow_before_2f - nrow_after_2f, "\n")
+```
+
+\(g\) After applying all the data cleaning and filtering constraints, the final sample size for the dataset is 29,523 observations.
+
+```{r}
+final_sample_size <- nrow(adult_data_final)
+cat("Final sample size:", final_sample_size, "\n")
+```
+
+## **Problem 3 - Adult Income Dataset**
+
+\(a\) & (b) The nextHappy() and happySequence() functions were correctly implemented and documented using standard Roxygen formatting. Both functions include error handling to ensure the input is a single positive integer. As demonstrated in the R output, the functions successfully reproduce the prompt's examples: correctly evaluating 19 as a happy number (terminating at 1) and 4 as an unhappy number (falling into a cycle).
+
+```{r}
+#' Compute the next value in the happy-number sequence
+#'
+#' This function takes a positive integer, squares each of its digits, 
+#' and returns the sum of those squares.
+#'
+#' @param n A positive integer.
+#' @return A positive integer representing the sum of the squared digits.
+nextHappy <- function(n) {
+  # Error handling for invalid input
+  if (!is.numeric(n) || length(n) != 1 || n <= 0 || n %% 1 != 0) {
+    stop("Invalid input: Please provide a single positive integer.")
+  }
+  
+  # Split number into digits, square them, and sum
+  digits <- as.numeric(strsplit(as.character(n), "")[[1]])
+  return(sum(digits^2))
+}
+
+# Reproduce the examples from the prompt
+nextHappy(19)
+nextHappy(82)
+```
+
+```{r}
+#' Generate the sequence to determine if a number is happy
+#'
+#' This function generates the sequence of numbers starting from n, 
+#' applying nextHappy() iteratively. It stops when it reaches 1 (Happy) 
+#' or detects a cycle (Unhappy).
+#'
+#' @param n A positive integer.
+#' @return A list containing:
+#'         - sequence: A numeric vector of the sequence evaluated.
+#'         - isHappy: A logical value (TRUE if happy, FALSE otherwise).
+happySequence <- function(n) {
+  # Error handling for invalid input
+  if (!is.numeric(n) || length(n) != 1 || n <= 0 || n %% 1 != 0) {
+    stop("Invalid input: Please provide a single positive integer.")
+  }
+  
+  seq_vec <- c(n)
+  current_val <- n
+  
+  while (TRUE) {
+    # If it reaches 1, it is a happy number
+    if (current_val == 1) {
+      return(list(sequence = seq_vec, isHappy = TRUE))
+    }
+    
+    next_val <- nextHappy(current_val)
+    seq_vec <- c(seq_vec, next_val)
+    
+    # If the next value is already in the sequence, it's trapped in a loop (unhappy)
+    if (next_val %in% head(seq_vec, -1)) {
+      return(list(sequence = seq_vec, isHappy = FALSE))
+    }
+    
+    current_val <- next_val
+  }
+}
+
+# Reproduce the examples from the prompt
+happySequence(19)
+happySequence(4)
+```
+
+\(c\) Based on the loop evaluating integers from 1 through 1000:
+
+**a.** There are exactly 143 happy numbers within this range.
+
+**b.** Consequently, 14.3% of the integers between 1 and 1000 are happy numbers.
+
+**c.** The integer 269 produces the longest sequence before terminating or cycling, taking exactly 20 steps.
+
+```{r}
+# Initialize empty vectors to store our results for 1 to 1000
+n_max <- 1000
+is_happy_results <- logical(n_max)
+sequence_lengths <- integer(n_max)
+
+# Loop through 1 to 1000 and apply our function
+for (i in 1:n_max) {
+  res <- happySequence(i)
+  is_happy_results[i] <- res$isHappy
+  sequence_lengths[i] <- length(res$sequence)
+}
+
+# a. How many are happy?
+num_happy <- sum(is_happy_results)
+cat("Happy numbers between 1 and 1000:", num_happy, "\n")
+
+# b. What percentage are happy?
+pct_happy <- (num_happy / n_max) * 100
+cat("Percentage of happy numbers:", pct_happy, "%\n")
+
+# c. Longest sequence before terminating or cycling
+longest_start <- which.max(sequence_lengths)
+cat("Starting value with the longest sequence:", longest_start, "\n")
+cat("Length of this sequence:", sequence_lengths[longest_start], "steps\n")
+```

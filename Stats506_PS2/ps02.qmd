@@ -1,0 +1,458 @@
+---
+title: "Stats 506 Problem Set 2"
+author: "Honghao Wang"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+---
+
+GitHub Repo: <https://github.com/whonghao-code/stats506/tree/main>
+
+## **Problem 1 - Random Walk with Momentum**
+
+\(a\) The function momentum_walk(n, p) simulates this process and returns the particle’s final position. The parameter n represents the number of steps, and p represents the probability of preserving the previous direction. Additionally, the function includes input sanitization to ensure that n is an integer where $n \ge 1$, and p is a valid probability where $0 \le p \le 1$.
+
+```{r}
+#' Simulate a 2D random walk with momentum
+#'
+#'
+#' @param n An integer representing the number of steps (must be >= 1).
+#' @param p A numeric probability of preserving the previous direction (0 <= p <= 1).
+#' @return A numeric vector of length 2 containing the final x and y coordinates.
+momentum_walk <- function(n, p) {
+  # Sanitize the input
+  if (!is.numeric(n) || length(n) != 1 || n < 1 || n %% 1 != 0) {
+    stop("Invalid input: n must be an integer greater than or equal to 1.")
+  }
+  if (!is.numeric(p) || length(p) != 1 || p < 0 || p > 1) {
+    stop("Invalid input: p must be a numeric value between 0 and 1.")
+  }
+  
+  # Define the 4 possible directions
+  dx <- c(1, -1, 0, 0)
+  dy <- c(0, 0, 1, -1)
+  
+  # Choose one of the four directions with equal probability
+  curr_dir <- sample(1:4, 1)
+  x <- dx[curr_dir]
+  y <- dy[curr_dir]
+  
+  # Subsequent steps
+  if (n > 1) {
+    for (i in 2:n) {
+      # (If runif(1) <= p, curr_dir remains unchanged, meaning it preserves momentum), else with probability 1-p, reselect a new direction at random
+      if (runif(1) > p) {
+        curr_dir <- sample(1:4, 1)
+      }
+      
+      # Update current position
+      x <- x + dx[curr_dir]
+      y <- y + dy[curr_dir]
+    }
+  }
+  
+  return(c(x, y))
+}
+
+# Demonstrate it works by running the example
+momentum_walk(10, 0.6)
+momentum_walk(10, 0.6)
+```
+
+\(b\) Both momentum_walk1 and momentum_walk2 were successfully implemented with input sanitization and Roxygen documentation.
+
+Logic of implementations:
+
+1.  momentum_walk1: This version uses a standard for loop. It initializes the starting direction, and for each subsequent step up to $n$, it sequentially draws a uniform random number to determine whether to update the current direction or keep it. It updates the position coordinates iteratively within the loop.
+
+2.  This version utilizes the apply family (specifically sapply()). Because each step depends on the outcome of the previous step, it also uses the superassignment operator (\<\<-) to record the direction from the previous step. By pre-generating random probabilities and potential new direction vectors, sapply() can efficiently resolve the sequence of all selected directions, and finally use vectorized summation to calculate the final coordinates.
+
+```{r}
+#' Simulate a random walk with momentum (Loop version)
+#'
+#' @param n Number of steps (must be an integer >= 1)
+#' @param p Probability of preserving the previous direction (0 <= p <= 1)
+#' @return A numeric vector of length 2 representing the final (x, y) coordinates
+momentum_walk1 <- function(n, p) {
+  # Sanitize inputs
+  if (!is.numeric(n) || length(n) != 1 || n < 1 || n %% 1 != 0) {
+    stop("Invalid input: n must be an integer >= 1")
+  }
+  if (!is.numeric(p) || length(p) != 1 || p < 0 || p > 1) {
+    stop("Invalid input: p must be between 0 and 1")
+  }
+  
+  dx <- c(1, -1, 0, 0)
+  dy <- c(0, 0, 1, -1)
+  
+  curr_dir <- sample(1:4, 1)
+  x <- dx[curr_dir]
+  y <- dy[curr_dir]
+  
+  if (n > 1) {
+    for (i in 2:n) {
+      if (runif(1) > p) {
+        curr_dir <- sample(1:4, 1)
+      }
+      x <- x + dx[curr_dir]
+      y <- y + dy[curr_dir]
+    }
+  }
+  
+  return(c(x, y))
+}
+```
+
+```{r}
+#' Simulate a random walk with momentum (Apply version)
+#'
+#' @param n Number of steps (must be an integer >= 1)
+#' @param p Probability of preserving the previous direction (0 <= p <= 1)
+#' @return A numeric vector of length 2 representing the final (x, y) coordinates
+momentum_walk2 <- function(n, p) {
+  # Sanitize inputs
+  if (!is.numeric(n) || length(n) != 1 || n < 1 || n %% 1 != 0) {
+    stop("Invalid input: n must be an integer >= 1")
+  }
+  if (!is.numeric(p) || length(p) != 1 || p < 0 || p > 1) {
+    stop("Invalid input: p must be between 0 and 1")
+  }
+  
+  dx <- c(1, -1, 0, 0)
+  dy <- c(0, 0, 1, -1)
+  
+  initial_dir <- sample(1:4, 1)
+  curr_dir <- initial_dir
+  
+  if (n == 1) {
+    return(c(dx[initial_dir], dy[initial_dir]))
+  }
+  
+  # Pre-generate random variables
+  rand_p <- runif(n - 1)
+  rand_dirs <- sample(1:4, n - 1, replace = TRUE)
+  
+  # Use sapply with superassignment (<<-) to track the direction
+  seq_dirs <- sapply(1:(n - 1), function(i) {
+    if (rand_p[i] > p) {
+      curr_dir <<- rand_dirs[i]
+    }
+    return(curr_dir)
+  })
+  
+  all_dirs <- c(initial_dir, seq_dirs)
+  return(c(sum(dx[all_dirs]), sum(dy[all_dirs])))
+}
+
+# Demonstrate that both functions work as requested
+momentum_walk1(10, 0.6)
+momentum_walk2(10, 0.6)
+momentum_walk1(1000, 0.6)
+momentum_walk2(1000, 0.6)
+```
+
+\(c\) To ensure the random simulations give reproducible results, I use the set.seed() function in R. I chose the momentum_walk1 implementation to demonstrate this for both $n = 10, p = 0.6$ and $n = 1000, p = 0.6$.
+
+**Explanation**: R uses a pseudo-random number generator, meaning the "random" numbers are actually generated by a deterministic mathematical algorithm starting from an initial starting point, known as the "seed". By manually setting the seed to a specific integer, we force the algorithm to start at the exact same point in its sequence. As a result, internal functions like sample() and runif() will draw the exact same sequence of values every time, ensuring that the particle takes the exact same path and ends up in the identical final position.
+
+```{r}
+# Choose the first implementation (momentum_walk1) to demonstrate reproducibility
+
+# Demonstrate for n = 10, p = 0.6
+set.seed(506)
+res1_10 <- momentum_walk1(10, 0.6)
+
+set.seed(506)
+res2_10 <- momentum_walk1(10, 0.6)
+
+cat("n=10, p=0.6 | First run :", res1_10, "\n")
+cat("n=10, p=0.6 | Second run:", res2_10, "\n\n")
+
+# Demonstrate for n = 1000, p = 0.6
+set.seed(506)
+res1_1000 <- momentum_walk1(1000, 0.6)
+
+set.seed(506) # Set the exact same seed again
+res2_1000 <- momentum_walk1(1000, 0.6)
+
+cat("n=1000, p=0.6 | First run :", res1_1000, "\n")
+cat("n=1000, p=0.6 | Second run:", res2_1000, "\n")
+```
+
+\(d\) Based on the simulations of 1000 steps (using a fixed random seed for consistency), the final distance from the origin increases significantly as the momentum probability ($p$) increases.
+
+Increasing momentum increases the final distance from the starting point. The reason is that a higher momentum probability ($p$) means the particle is more likely to continue traveling in its current direction. In a standard random walk ($p = 0$), the particle frequently changes direction, causing steps to cancel each other out, which traps it closer to the origin. Conversely, with high momentum (e.g., $p = 0.9$), the particle tends to travel in long, continuous straight lines before turning. This lack of "canceling steps" allows it to drift much further away from the starting point.
+
+```{r}
+# Define a function to calculate the Euclidean distance
+calc_distance <- function(pos) {
+  sqrt(pos[1]^2 + pos[2]^2)
+}
+
+# Set seed for reproducibility
+set.seed(506)
+
+# Simulate a walk of 1000 steps for p = 0, p = 0.5, and p = 0.9
+pos_p0 <- momentum_walk1(1000, 0)
+dist_p0 <- calc_distance(pos_p0)
+
+pos_p05 <- momentum_walk1(1000, 0.5)
+dist_p05 <- calc_distance(pos_p05)
+
+pos_p09 <- momentum_walk1(1000, 0.9)
+dist_p09 <- calc_distance(pos_p09)
+
+# Print the results
+cat("Distance for p = 0.0:", dist_p0, "\n")
+cat("Distance for p = 0.5:", dist_p05, "\n")
+cat("Distance for p = 0.9:", dist_p09, "\n")
+```
+
+\(e\) As shown in the generated table, the mean final distance strictly increases as the momentum probability ($p$) increases.
+
+```{r}
+# Set seed for reproducibility
+set.seed(506)
+
+# Define parameters for the Monte Carlo simulation
+p_values <- c(0, 0.25, 0.5, 0.75, 0.9)
+n_steps <- 1000
+n_sims <- 1000
+
+# i & ii: Simulate 1000 walks for each p and calculate the mean final distance
+mean_distances <- sapply(p_values, function(p) {
+  distances <- replicate(n_sims, {
+    pos <- momentum_walk1(n_steps, p)
+    sqrt(pos[1]^2 + pos[2]^2)
+  })
+  mean(distances) 
+})
+
+# iii: Print results in a table with two columns: p and mean_distance
+results_table <- data.frame(
+  p = p_values,
+  mean_distance = mean_distances
+)
+
+results_table
+```
+
+\(f\)
+
+1.  Based on the benchmark results, the apply version (momentum_walk2) is significantly faster than the for loop version (momentum_walk1).
+
+2.  Yes. While the relative speedup remains somewhat consistent (the apply version is roughly 2.5 to 3 times faster in both scenarios), the absolute difference in execution time grows substantially. For $n = 1,000$, the time difference is only about a millisecond, but for $n = 100,000$, the apply version saves well over 130 milliseconds compared to the loop version.
+
+3.  The performance difference is primarily driven by how random numbers are generated and handled in R. The for loop implementation (momentum_walk1) calls runif(1) and sample() sequentially inside the loop for every single step. In R, repeated function calls inside a loop introduce significant computational overhead. Conversely, the apply implementation (momentum_walk2) pre-generates all necessary random probabilities and potential directions simultaneously at the beginning using highly optimized vectorized operations (e.g., runif(n - 1)).
+
+```{r}
+library(microbenchmark)
+
+# Compare performance for n = 1000, p = 0.6
+# Set times = 100 to average over 100 runs
+mb_1000 <- microbenchmark(
+  loop_version = momentum_walk1(1000, 0.6),
+  apply_version = momentum_walk2(1000, 0.6),
+  times = 100
+)
+print(mb_1000)
+
+# Compare performance for n = 100000, p = 0.6
+mb_100000 <- microbenchmark(
+  loop_version = momentum_walk1(100000, 0.6),
+  apply_version = momentum_walk2(100000, 0.6),
+  times = 100
+)
+print(mb_100000)
+```
+
+## **Problem 2 - Monte Carlo Simulation of Campus Bus Arrivals**
+
+\(a\) To estimate the expected total number of passengers without using any loops, I utilized R's vectorized operations. Instead of simulating one day at a time, I simulated each specific time block for all 10,000 days simultaneously using rpois() and rnorm().
+
+For the Poisson-distributed blocks, I utilized the additive property of independent Poisson random variables. For instance, simulating 3 hours of a Poisson distribution with a mean of 4 per hour is statistically equivalent to simulating one block with a Poisson distribution of mean $3 \times 4 = 12$. For the Normal-distributed blocks, I converted the given variances (16 and 25) into standard deviations (4 and 5) as required by the rnorm() function.
+
+Finally, I summed the passenger vectors across all 5 time periods and calculated the mean of this total passenger vector. The Result is 256.0969, which is very close to the theoretical expectation: 12 + 45 + 90 + 55 + 54 = 256.
+
+```{r}
+# Set seed for reproducibility
+set.seed(506)
+
+# Number of days to simulate
+n_days <- 10000
+
+# 1. 6 AM to 8 AM (3 hours): Poisson with mean 4 per hour
+# The sum of 3 independent Poisson(4) is Poisson(3 * 4 = 12)
+period_1 <- rpois(n_days, lambda = 3 * 4)
+
+# 2. 9 AM (1 hour): Normal with mean 45 and variance 16
+period_2 <- rnorm(n_days, mean = 45, sd = 4)
+
+# 3. 10 AM to 3 PM (6 hours): Poisson with mean 15 per hour
+# The sum of 6 independent Poisson(15) is Poisson(6 * 15 = 90)
+period_3 <- rpois(n_days, lambda = 6 * 15)
+
+# 4. 4 PM (1 hour): Normal with mean 55 and variance 25
+period_4 <- rnorm(n_days, mean = 55, sd = 5)
+
+# 5. 5 PM to 10 PM (6 hours): Poisson with mean 9 per hour
+# The sum of 6 independent Poisson(9) is Poisson(6 * 9 = 54)
+period_5 <- rpois(n_days, lambda = 6 * 9)
+
+# Total passengers per day for all 10,000 days
+total_passengers <- period_1 + period_2 + period_3 + period_4 + period_5
+
+# Estimate the expected total number of passengers
+expected_total <- mean(total_passengers)
+
+cat("Estimated expected total passengers per day:", expected_total, "\n")
+```
+
+## **Problem 3 - Linear Regression**
+
+```{r}
+youtube <- read.csv(
+  "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-03-02/youtube.csv"
+)
+```
+
+\(a\) To de-identify the dataset, I removed all variables that could uniquely identify a specific Super Bowl commercial. Based on the instructions and a review of the dataset's columns, I dropped the following features: brand, superbowl_ads_dot_com_url, youtube_url, thumbnail, id, kind, etag, title, description, published_at, channel_id, channel_title. Finally, the dimensions of the resulting de-identified dataset are 247 rows (observations) and 14 columns (variables).
+
+```{r}
+cols_to_remove <- c(
+  "brand", 
+  "superbowl_ads_dot_com_url", 
+  "youtube_url", 
+  "thumbnail",
+  "id", 
+  "kind", 
+  "etag", 
+  "title", 
+  "description", 
+  "published_at", 
+  "channel_id", 
+  "channel_title"
+)
+
+youtube_deid <- youtube[, !(names(youtube) %in% cols_to_remove)]
+
+names(youtube_deid)
+
+# Report the dimensions of the resulting dataset
+dim(youtube_deid)
+```
+
+\(b\) Based on the examination of the data distributions:
+
+1.  View counts, Like counts, Dislike counts, and Comment counts fall into Category 2 (The variable should be transformed before being used as the outcome in a linear regression model).
+
+Histograms reveal that these internet engagement metrics are heavily right-skewed. The vast majority of commercials have moderate engagement, while a few viral ones have massive outliers. Using them directly would violate the normality of residuals and homoscedasticity assumptions required for linear regression. To fix this, I applied a log(x + 1) transformation to pull in the extreme outliers and normalize their distributions.
+
+2.  Favorite counts falls into Category 3 (The variable is not appropriate to use as the outcome in a linear regression model).
+
+A summary of the favorite_count variable shows that every single observation in the dataset is exactly 0 (likely because YouTube deprecated the public favorite metric). Because it is a constant with absolutely zero variance, it is mathematically impossible and meaningless to use it as an outcome variable in any regression model.
+
+```{r}
+# Examine the distributions using histograms
+par(mfrow = c(2, 3))
+hist(youtube_deid$view_count, main = "View Counts")
+hist(youtube_deid$like_count, main = "Like Counts")
+hist(youtube_deid$dislike_count, main = "Dislike Counts")
+hist(youtube_deid$comment_count, main = "Comment Counts")
+hist(youtube_deid$favorite_count, main = "Favorite Counts")
+
+# Check favorite_count mathematically
+summary(youtube_deid$favorite_count)
+
+# Perform log(x + 1) transformation for the skewed variables
+youtube_deid$log_view_count <- log(youtube_deid$view_count + 1)
+youtube_deid$log_like_count <- log(youtube_deid$like_count + 1)
+youtube_deid$log_dislike_count <- log(youtube_deid$dislike_count + 1)
+youtube_deid$log_comment_count <- log(youtube_deid$comment_count + 1)
+```
+
+\(c\) Based on the 28 linear regression models fitted (each including year as a continuous covariate), here is the summary of the findings:
+
+1&2. None of the commercial characteristics have a statistically significant association with any of the four engagement outcomes (log_view_count, log_like_count, log_dislike_count, log_comment_count) at the $\alpha = 0.05$ significance level. All resulting p-values for the primary predictors were greater than 0.05. Therefore, there are no significant positive or negative directions to report.
+
+3.  Among all the binary commercial characteristics, the danger characteristic has the largest positive estimated association with view counts (Estimate $\approx$ 0.667). This indicates that, holding the broadcast year constant, danger elements are associated with the increase in YouTube view counts, even though this specific association is not statistically significant at the 0.05 level (p-value $\approx$ 0.094).
+
+```{r}
+# Define outcomes and predictors
+outcomes <- c("log_view_count", "log_like_count", "log_dislike_count", "log_comment_count")
+predictors <- c("funny", "show_product_quickly", "patriotic", "celebrity", "danger", "animals", "use_sex")
+
+# Create an empty dataframe to store the results
+results <- data.frame(Outcome=character(), Predictor=character(), Estimate=numeric(), P_Value=numeric(), stringsAsFactors=FALSE)
+
+# Loop through each outcome and predictor to fit 28 models
+for (y in outcomes) {
+  for (x in predictors) {
+    # Construct the formula: outcome ~ predictor + year
+    formula_str <- paste(y, "~", x, "+ year")
+    model <- lm(as.formula(formula_str), data = youtube_deid)
+    
+    mod_summary <- summary(model)
+    
+    est <- mod_summary$coefficients[2, "Estimate"]
+    pval <- mod_summary$coefficients[2, "Pr(>|t|)"]
+    
+    results <- rbind(results, data.frame(Outcome = y, Predictor = x, Estimate = est, P_Value = pval))
+  }
+}
+
+# Filter for significant results (alpha = 0.05) and determine direction
+sig_results <- results[results$P_Value < 0.05, ]
+sig_results$Direction <- ifelse(sig_results$Estimate > 0, "Positive", "Negative")
+
+cat("\n--- SIGNIFICANT ASSOCIATIONS (alpha = 0.05) ---\n")
+print(sig_results)
+
+# Find the largest positive association for view counts
+cat("\n--- LARGEST POSITIVE ASSOCIATION WITH VIEW COUNTS ---\n")
+view_pos <- results[results$Outcome == "log_view_count" & results$Estimate > 0, ]
+print(view_pos[which.max(view_pos$Estimate), ])
+```
+
+\(d\) Based on the results from part 3-c, the binary commercial characteristic with the smallest p-value for predicting log-transformed view counts is danger.
+
+To estimate the regression coefficients without using the lm() function, I constructed a design matrix $X$ consisting of three columns: a column of 1s for the intercept, a column of numeric values (0 or 1) for the danger characteristic, and a column for the year. The response vector $y$ was set to the log_view_count variable. After handling the missing values (NAs) to ensure proper matrix multiplication, I applied the matrix formula $\hat{\beta} = (X^T X)^{-1} X^T y$.
+
+The manually calculated estimated regression coefficients are:
+
+1.  Intercept ($\beta_0$): -31.391\
+2.  danger ($\beta_1$): 0.667\
+3.  Year ($\beta_2$): 0.021\
+
+These manually calculated coefficients using linear algebra perfectly match the exact output generated by using the standard lm() modeling function.
+
+```{r}
+# Find the predictor with the smallest p-value for log_view_count from part 3c
+view_results <- results[results$Outcome == "log_view_count", ]
+best_predictor <- view_results$Predictor[which.min(view_results$P_Value)]
+
+cat("Predictor with smallest p-value for view counts:", best_predictor, "\n\n")
+
+clean_data <- na.omit(youtube_deid[, c("log_view_count", best_predictor, "year")])
+
+y <- as.matrix(clean_data$log_view_count)
+
+n <- nrow(clean_data)
+intercept <- rep(1, n)
+predictor_col <- as.numeric(clean_data[[best_predictor]])
+year_col <- clean_data$year
+
+# Combine into a single matrix
+X <- cbind(intercept, predictor_col, year_col)
+colnames(X) <- c("Intercept", best_predictor, "year")
+
+# Calculate estimated coefficients using matrix algebra: beta_hat = (X^T X)^-1 X^T y
+X_T <- t(X)
+beta_hat <- solve(X_T %*% X) %*% X_T %*% y
+
+print("Estimated Regression Coefficients:")
+print(beta_hat)
+
+lm(youtube_deid$log_view_count ~ youtube_deid[[best_predictor]] + youtube_deid$year)
+```

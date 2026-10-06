@@ -1,0 +1,396 @@
+---
+title: "Stats 506 Problem Set 3"
+author: "Honghao Wang"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+---
+
+GitHub Repo: <https://github.com/whonghao-code/stats506/tree/main>
+
+## **Problem 1**
+
+\(a\) The resulting merged data.frame contains 4,582 observations and 119 variables.
+
+```{r}
+library(haven)
+library(dplyr)
+
+
+aux_data <- read_xpt("AUX_I.XPT")
+demo_data <- read_xpt("DEMO_I.XPT")
+
+merged_data <- inner_join(demo_data, aux_data, by = "SEQN")
+
+cat("Dimensions of the merged data.frame:\n")
+print(dim(merged_data))
+```
+
+\(b\) I cleaned the required demographic variables to prepare them for analysis.
+
+For annual household income, the issue is that the original variable included categories 12 (Under \$20,000) and 13 (\$20,000 and Over) which broke the ordinal numeric sequence of the other income brackets. So I replaced categories 12, 13, 77 (Refused), and 99 (Don't know) with NA.
+
+```{r}
+cleaned_data <- merged_data %>%
+  mutate(
+    # Gender: 1 = Male, 2 = Female
+    Gender = factor(RIAGENDR, levels = c(1, 2), labels = c("Male", "Female")),
+    
+    # Citizenship status: 1 = Citizen, 2 = Not a citizen. 
+    # Values 7 and 9 are set to NA.
+    Citizenship = ifelse(DMDCITZN %in% c(7, 9), NA, DMDCITZN),
+    Citizenship = factor(Citizenship, levels = c(1, 2), labels = c("Citizen", "Not Citizen")),
+    
+    # Number of children 5 years or younger: 
+    # Values 77 and 99 are set to NA.
+    Children_under_5 = ifelse(DMDHHSZA %in% c(77, 99), NA, DMDHHSZA),
+    
+    # Annual household income
+    # Issue: Categories 12 and 13 are broad overlapping groups that break the ordinal 
+    # Values 12, 13, 77 and 99 are set to NA.
+    Income_Code = ifelse(INDHHIN2 %in% c(12, 13, 77, 99), NA, INDHHIN2),
+    Income = factor(Income_Code, 
+                    levels = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15), 
+                    ordered = TRUE,
+                    labels = c("$0 to $4,999", "$5,000 to $9,999", "$10,000 to $14,999", 
+                               "$15,000 to $19,999", "$20,000 to $24,999", "$25,000 to $34,999", 
+                               "$35,000 to $44,999", "$45,000 to $54,999", "$55,000 to $64,999", 
+                               "$65,000 to $74,999", "$75,000 to $99,999", "$100,000 and Over"))
+  )
+
+summary(cleaned_data %>% select(Gender, Citizenship, Children_under_5, Income))
+```
+
+\(c\) I fitted four Poisson regression models to predict the right and left ear tympanometric widths. The IRRs, the sample size, pseudo-$R^2$, and AIC values, are presented in the formatted kable table below.
+
+```{r}
+library(tidyr)
+library(broom)
+library(knitr)
+
+# Model 1R: Right ear ~ gender
+m1R <- glm(AUXTWIDR ~ Gender, family = poisson, data = cleaned_data)
+
+# Model 2R: Right ear ~ gender + citizenship + children + income
+m2R <- glm(AUXTWIDR ~ Gender + Citizenship + Children_under_5 + Income, family = poisson, data = cleaned_data)
+
+# Model 1L: Left ear ~ gender
+m1L <- glm(AUXTWIDL ~ Gender, family = poisson, data = cleaned_data)
+
+# Model 2L: Left ear ~ gender + citizenship + children + income
+m2L <- glm(AUXTWIDL ~ Gender + Citizenship + Children_under_5 + Income, family = poisson, data = cleaned_data)
+
+# Calculate Pseudo R-squared
+calc_pseudo_r2 <- function(model) {
+  round(1 - (model$deviance / model$null.deviance), 4)
+}
+pseudo_R2 <- c(calc_pseudo_r2(m1R), calc_pseudo_r2(m2R), calc_pseudo_r2(m1L), calc_pseudo_r2(m2L))
+
+exp_coefs <- list(exp(coef(m1R)), exp(coef(m2R)), exp(coef(m1L)), exp(coef(m2L)))
+
+# Extract coefficients for each model and exponentiate to get IRRs
+t1 <- tidy(m1R, exponentiate = TRUE) %>% select(term, estimate) %>% rename(`Model 1R (Right)` = estimate)
+t2 <- tidy(m2R, exponentiate = TRUE) %>% select(term, estimate) %>% rename(`Model 2R (Right)` = estimate)
+t3 <- tidy(m1L, exponentiate = TRUE) %>% select(term, estimate) %>% rename(`Model 1L (Left)` = estimate)
+t4 <- tidy(m2L, exponentiate = TRUE) %>% select(term, estimate) %>% rename(`Model 2L (Left)` = estimate)
+
+coef_table <- t1 %>%
+  full_join(t2, by = "term") %>%
+  full_join(t3, by = "term") %>%
+  full_join(t4, by = "term") %>%
+  mutate(across(-term, ~ sprintf("%.3f", .x))) %>%
+  mutate(across(-term, ~ ifelse(.x == "NA", "", .x)))
+
+format_aic <- function(model) { 
+  formatC(AIC(model), format = "f", digits = 1, big.mark = ",") 
+}
+
+stats_table <- data.frame(
+  term = c("---", "Sample Size (n)", "Pseudo R-squared", "AIC"),
+  `Model 1R (Right)` = c("---", as.character(nobs(m1R)), sprintf("%.4f", pseudo_R2[1]), format_aic(m1R)),
+  `Model 2R (Right)` = c("---", as.character(nobs(m2R)), sprintf("%.4f", pseudo_R2[2]), format_aic(m2R)),
+  `Model 1L (Left)`  = c("---", as.character(nobs(m1L)), sprintf("%.4f", pseudo_R2[3]), format_aic(m1L)),
+  `Model 2L (Left)`  = c("---", as.character(nobs(m2L)), sprintf("%.4f", pseudo_R2[4]), format_aic(m2L)),
+  check.names = FALSE
+)
+
+final_table <- bind_rows(coef_table, stats_table)
+
+kable(final_table, 
+      digits = 3,
+      caption = "Poisson Regression Models",
+      align = "lcccc")
+```
+
+\(d\) Based on Model 2L, there is strong statistical evidence indicating a difference between males and females in terms of their incidence risk ratio for the left ear tympanometric width.
+
+**Test Results:** A formal hypothesis test on the GenderFemale coefficient reveals an IRR of 1.02, with a 95% confidence interval of \[1.01, 1.03\]. The associated p-value is extremely small.
+
+**Interpretation:** Since the p-value is well below the standard $\alpha = 0.05$ threshold, we reject the null hypothesis. The IRR of 1.02 means that, holding citizenship status, number of children, and household income constant, the predicted tympanometric width of the left ear for females is expected to be 1.02 times that of males. The fact that the 95% confidence interval is entirely above 1 confirms that the predicted value for women is slightly higher than that for men.
+
+```{r}
+
+m2L_results <- tidy(m2L, exponentiate = TRUE, conf.int = TRUE)
+gender_test <- m2L_results[m2L_results$term == "GenderFemale", ]
+print(gender_test[, c("term", "estimate", "p.value", "conf.low", "conf.high")])
+```
+
+## **Problem 2 - Sakila**
+
+\(a\) Based on the data extracted from the Sakila database, Store 1 has a total of 326 customers, with approximately 97.55% of them being active. Store 2 has 273 customers, with approximately 97.44% being active.
+
+**Performance Comparison:** When evaluating the two approaches with 100 iterations, The single SQL query approach was significantly faster (mean execution time $\approx 409.1$ microseconds) compared to extracting the table via SQL and performing the aggregations in R (mean execution time $\approx 2031.3$ microseconds).
+
+```{r}
+library(microbenchmark)
+library(RSQLite)
+
+con <- dbConnect(SQLite(), "sakila_master.db")
+
+# Method 1: Extract data via simple SQL and process using R operations
+get_customers_r <- function() {
+  customer_df <- dbGetQuery(con, "SELECT store_id, active FROM customer")
+  
+  result <- customer_df %>%
+    group_by(store_id) %>%
+    summarize(
+      total_customers = n(),
+      pct_active = mean(as.numeric(active)) * 100
+    ) %>%
+    ungroup()
+  
+  return(result)
+}
+
+# Method 2: Process entirely using a single SQL query
+get_customers_sql <- function() {
+
+  query <- "
+    SELECT 
+      store_id, 
+      COUNT(customer_id) AS total_customers, 
+      AVG(active) * 100 AS pct_active 
+    FROM customer 
+    GROUP BY store_id
+  "
+  result <- dbGetQuery(con, query)
+  return(result)
+}
+
+# Verify that both methods yield the same results
+cat("--- Result from Method 1 (R operations) ---\n")
+print(get_customers_r())
+
+cat("\n--- Result from Method 2 (Single SQL query) ---\n")
+print(get_customers_sql())
+
+# Compare the performance using microbenchmark
+cat("\n--- Running microbenchmark ---\n")
+mb_results_2a <- microbenchmark(
+  R_Method = get_customers_r(),
+  SQL_Method = get_customers_sql(),
+  times = 100
+)
+print(mb_results_2a)
+
+```
+
+\(b\) The result is that the staff members are Mike Hillyer (located in Canada) and Jon Stephens (located in Australia).
+
+**Performance Comparison:** When evaluating the performance with 100 iterations, the single SQL query approach (mean execution time $\approx 262.4$ microseconds) was drastically faster than extracting the four individual tables and performing the inner_join operations in R (mean execution time $\approx 4269.8$ microseconds).
+
+```{r}
+# Method 1: Extract individual tables via simple SQL and join using R 
+get_staff_r <- function() {
+
+  staff_df <- dbGetQuery(con, "SELECT first_name, last_name, address_id FROM staff")
+  address_df <- dbGetQuery(con, "SELECT address_id, city_id FROM address")
+  city_df <- dbGetQuery(con, "SELECT city_id, country_id FROM city")
+  country_df <- dbGetQuery(con, "SELECT country_id, country FROM country")
+  
+  # Join the tables in R 
+  result <- staff_df %>%
+    inner_join(address_df, by = "address_id") %>%
+    inner_join(city_df, by = "city_id") %>%
+    inner_join(country_df, by = "country_id") %>%
+    select(first_name, last_name, country)
+  
+  return(result)
+}
+
+# Method 2: Process entirely using a single SQL query
+get_staff_sql <- function() {
+  query <- "
+    SELECT 
+      s.first_name, 
+      s.last_name, 
+      c.country 
+    FROM staff s
+    INNER JOIN address a ON s.address_id = a.address_id
+    INNER JOIN city ci ON a.city_id = ci.city_id
+    INNER JOIN country c ON ci.country_id = c.country_id
+  "
+  result <- dbGetQuery(con, query)
+  return(result)
+}
+
+# Verify that both methods yield the same results
+cat("--- Result from Method 1 (R operations) ---\n")
+print(get_staff_r())
+ 
+cat("\n--- Result from Method 2 (Single SQL query) ---\n")
+print(get_staff_sql())
+
+# Compare the performance using microbenchmark
+cat("\n--- Running microbenchmark ---\n")
+mb_results_2b <- microbenchmark(
+  R_Method = get_staff_r(),
+  SQL_Method = get_staff_sql(),
+  times = 100
+)
+print(mb_results_2b)
+```
+
+\(c\) The films which were rented for the highest dollar value are SCORPION APOLLO, FLINTSTONES HAPPINESS, SHOW LORD, TRAP GUYS, TIES HUNGER, VIRTUAL SPOILERS, STING PERSONAL, MINE TITANS, and MIDSUMMER GROUNDHOG.
+
+**Performance Comparison:** When evaluating the two approaches with 100 iterations, the single SQL query utilizing a subquery and multiple joins (mean execution time $\approx 1.42$ milliseconds) significantly outperformed the method of extracting all constituent tables and joining them within R (mean execution time $\approx 17.97$ milliseconds).
+
+```{r}
+# Method 1: Extract individual tables via SQL and process using R
+get_highest_rental_r <- function() {
+  film_df <- dbGetQuery(con, "SELECT film_id, title FROM film")
+  inventory_df <- dbGetQuery(con, "SELECT inventory_id, film_id FROM inventory")
+  rental_df <- dbGetQuery(con, "SELECT rental_id, inventory_id FROM rental")
+  payment_df <- dbGetQuery(con, "SELECT rental_id, amount FROM payment")
+  
+  merged <- payment_df %>%
+    inner_join(rental_df, by = "rental_id") %>%
+    inner_join(inventory_df, by = "inventory_id") %>%
+    inner_join(film_df, by = "film_id")
+  
+  # Find the maximum payment amount
+  max_amount <- max(merged$amount, na.rm = TRUE)
+  
+  # Filter for the film that match this maximum amount
+  result <- merged %>%
+    filter(amount == max_amount) %>%
+    select(title) %>%
+    distinct()
+  
+  return(result)
+}
+
+# Method 2: Process using a single SQL query
+get_highest_rental_sql <- function() {
+  query <- "
+    SELECT DISTINCT f.title
+    FROM film f
+    INNER JOIN inventory i ON f.film_id = i.film_id
+    INNER JOIN rental r ON i.inventory_id = r.inventory_id
+    INNER JOIN payment p ON r.rental_id = p.rental_id
+    WHERE p.amount = (SELECT MAX(amount) FROM payment)
+  "
+  result <- dbGetQuery(con, query)
+  return(result)
+}
+
+# Verify that both methods yield the same results
+cat("--- Result from Method 1 (R operations) ---\n")
+print(get_highest_rental_r())
+
+cat("\n--- Result from Method 2 (Single SQL query) ---\n")
+print(get_highest_rental_sql())
+
+# Compare the performance using microbenchmark
+cat("\n--- Running microbenchmark (this may take a moment) ---\n")
+mb_results_2c <- microbenchmark(
+  R_Method = get_highest_rental_r(),
+  SQL_Method = get_highest_rental_sql(),
+  times = 100
+)
+print(mb_results_2c)
+
+dbDisconnect(con)
+```
+
+## **Problem 3 - Australian Records**
+
+\(a\) 0% of the websites in the dataset are .com domains.
+
+```{r}
+au_data <- read.csv("au-500.csv")
+pct_com <- mean(grepl("\\.com$", au_data$web)) * 100
+cat("3a. Percentage of .com websites:", round(pct_com, 2), "%\n")
+
+```
+
+\(b\) The most common email domain name in the dataset is hotmail.com.
+
+```{r}
+library(stringr)
+domains <- str_extract(au_data$email, "(?<=@).*")
+domain_counts <- table(domains)
+most_common_domain <- names(which.max(domain_counts))
+cat("\n3b. Most common email domain:", most_common_domain, "\n")
+```
+
+\(c\) Excluding commas and whitespace: 98.8% (0.988) of the company names contain at least one eligible non-alphabetic character.
+
+Also excluding &: The proportion remains 98.8% (0.988), indicating that ampersands do not appear in the company names that trigger this condition.
+
+```{r}
+prop_non_alpha_1 <- mean(grepl("[^a-zA-Z,\\s]", au_data$company_name))
+prop_non_alpha_2 <- mean(grepl("[^a-zA-Z,\\s&]", au_data$company_name))
+cat("\n3c. Proportion (excluding commas/whitespace):", round(prop_non_alpha_1, 4), "\n")
+cat("3c. Proportion (also excluding &):", round(prop_non_alpha_2, 4), "\n")
+```
+
+\(d\) I extracted all numeric digits from phone1 and phone2 and restructured them into the uniform cell phone format (1234-567-890).
+
+```{r}
+format_phone <- function(p) {
+  digits <- gsub("\\D", "", p)
+  sub("^(\\d{4})(\\d{3})(\\d{3})$", "\\1-\\2-\\3", digits)
+}
+au_data$phone1_fmt <- format_phone(au_data$phone1)
+au_data$phone2_fmt <- format_phone(au_data$phone2)
+
+cat("\n3d. First 10 formatted phone numbers (phone1):\n")
+print(head(au_data$phone1_fmt, 10))
+cat("\n3d. First 10 formatted phone numbers (phone2):\n")
+print(head(au_data$phone2_fmt, 10))
+```
+
+\(e\) The histogram visualizes the natural logarithm of the extracted apartment numbers.
+
+```{r}
+apt_nums <- as.numeric(str_extract(au_data$address, "\\d+$"))
+apt_nums <- apt_nums[!is.na(apt_nums)] 
+
+hist(log(apt_nums), 
+     main = "Histogram of Log(Apartment Numbers)", 
+     xlab = "Log(Apartment Number)", 
+     col = "lightblue", 
+     border = "white")
+```
+
+\(f\) The apartment numbers do not follow Benford's Law.
+
+The actual leading digit proportions deviate significantly from the theoretical probabilities; for instance, the digit "1" appears only 9.2% of the time (compared to the expected 30.1%), while "9" appears 14.6% of the time (rather than 4.6%). Thus, these numbers would not pass as authentic real-world data.
+
+```{r}
+leading_digits <- as.numeric(substr(as.character(apt_nums), 1, 1))
+leading_digits <- leading_digits[leading_digits > 0]
+
+actual_props <- prop.table(table(factor(leading_digits, levels = 1:9)))
+benford_props <- log10(1 + 1/(1:9))
+
+benford_check <- data.frame(
+  Digit = 1:9,
+  Actual_Proportion = as.numeric(actual_props),
+  Benford_Proportion = benford_props
+)
+cat("\n3f. Benford's Law Comparison:\n")
+print(benford_check)
+```

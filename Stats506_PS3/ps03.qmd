@@ -50,13 +50,7 @@ cleaned_data <- merged_data %>%
     # Issue: Categories 12 and 13 are broad overlapping groups that break the ordinal 
     # Values 12, 13, 77 and 99 are set to NA.
     Income_Code = ifelse(INDHHIN2 %in% c(12, 13, 77, 99), NA, INDHHIN2),
-    Income = factor(Income_Code, 
-                    levels = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15), 
-                    ordered = TRUE,
-                    labels = c("$0 to $4,999", "$5,000 to $9,999", "$10,000 to $14,999", 
-                               "$15,000 to $19,999", "$20,000 to $24,999", "$25,000 to $34,999", 
-                               "$35,000 to $44,999", "$45,000 to $54,999", "$55,000 to $64,999", 
-                               "$65,000 to $74,999", "$75,000 to $99,999", "$100,000 and Over"))
+    Income = as.numeric(Income_Code)
   )
 
 summary(cleaned_data %>% select(Gender, Citizenship, Children_under_5, Income))
@@ -123,24 +117,40 @@ kable(final_table,
       align = "lcccc")
 ```
 
-\(d\) Based on Model 2L, there is strong statistical evidence indicating a difference between males and females in terms of their incidence risk ratio for the left ear tympanometric width.
+\(d\)
 
-**Test Results:** A formal hypothesis test on the GenderFemale coefficient reveals an IRR of 1.02, with a 95% confidence interval of \[1.01, 1.03\]. The associated p-value is extremely small.
+1\. Test for Incidence Risk Ratio (IRR) Difference
 
-**Interpretation:** Since the p-value is well below the standard $\alpha = 0.05$ threshold, we reject the null hypothesis. The IRR of 1.02 means that, holding citizenship status, number of children, and household income constant, the predicted tympanometric width of the left ear for females is expected to be 1.02 times that of males. The fact that the 95% confidence interval is entirely above 1 confirms that the predicted value for women is slightly higher than that for men.
+**Test Results:** For the female gender coefficient, the estimated IRR is 1.02. The 95% confidence interval is \[1.01, 1.03\], and the p-value is 0.000000224.
+
+**Interpretation:** The p-value is much less than 0.05, so we reject the null hypothesis. There is strong evidence of a difference in the incidence risk ratio between men and women. Holding other variables constant, the rate for females is expected to be 1.02 times higher than for males.
+
+2\. Test for Predicted Value Difference
+
+**Test Results:** The emmeans contrast test compares the predicted values for males and females. The estimated ratio (Male / Female) is 0.982. The p-value is \< 0.0001.
+
+**Interpretation:** Because the p-value is less than 0.05, we reject the null hypothesis. There is a statistically significant difference in the predicted tympanometric width of the left ear between men and women. The predicted value for males is slightly lower than for females.
 
 ```{r}
+library(emmeans)
 
-m2L_results <- tidy(m2L, exponentiate = TRUE, conf.int = TRUE)
-gender_test <- m2L_results[m2L_results$term == "GenderFemale", ]
-print(gender_test[, c("term", "estimate", "p.value", "conf.low", "conf.high")])
+m2L_irr_results <- tidy(m2L, exponentiate = TRUE, conf.int = TRUE)
+irr_test <- m2L_irr_results[m2L_irr_results$term == "GenderFemale", ]
+
+cat("Incidence Risk Ratio (IRR) Difference")
+print(irr_test[, c("term", "estimate", "p.value", "conf.low", "conf.high")])
+
+
+pred_values <- emmeans(m2L, ~ Gender, type = "response")
+pred_test <- pairs(pred_values)
+print(pred_test)
 ```
 
 ## **Problem 2 - Sakila**
 
 \(a\) Based on the data extracted from the Sakila database, Store 1 has a total of 326 customers, with approximately 97.55% of them being active. Store 2 has 273 customers, with approximately 97.44% being active.
 
-**Performance Comparison:** When evaluating the two approaches with 100 iterations, The single SQL query approach was significantly faster (mean execution time $\approx 409.1$ microseconds) compared to extracting the table via SQL and performing the aggregations in R (mean execution time $\approx 2031.3$ microseconds).
+**Performance Comparison:** When evaluating the two approaches with 100 iterations, The single SQL query approach was significantly faster (mean execution time $\approx 392.7$ microseconds) compared to extracting the table via SQL and performing the aggregations in R (mean execution time $\approx 2702.4$ microseconds).
 
 ```{r}
 library(microbenchmark)
@@ -198,7 +208,7 @@ print(mb_results_2a)
 
 \(b\) The result is that the staff members are Mike Hillyer (located in Canada) and Jon Stephens (located in Australia).
 
-**Performance Comparison:** When evaluating the performance with 100 iterations, the single SQL query approach (mean execution time $\approx 262.4$ microseconds) was drastically faster than extracting the four individual tables and performing the inner_join operations in R (mean execution time $\approx 4269.8$ microseconds).
+**Performance Comparison:** When evaluating the performance with 100 iterations, the single SQL query approach (mean execution time $\approx 287.7$ microseconds) was drastically faster than extracting the four individual tables and performing the inner_join operations in R (mean execution time $\approx 4963.4$ microseconds).
 
 ```{r}
 # Method 1: Extract individual tables via simple SQL and join using R 
@@ -254,7 +264,7 @@ print(mb_results_2b)
 
 \(c\) The films which were rented for the highest dollar value are SCORPION APOLLO, FLINTSTONES HAPPINESS, SHOW LORD, TRAP GUYS, TIES HUNGER, VIRTUAL SPOILERS, STING PERSONAL, MINE TITANS, and MIDSUMMER GROUNDHOG.
 
-**Performance Comparison:** When evaluating the two approaches with 100 iterations, the single SQL query utilizing a subquery and multiple joins (mean execution time $\approx 1.42$ milliseconds) significantly outperformed the method of extracting all constituent tables and joining them within R (mean execution time $\approx 17.97$ milliseconds).
+**Performance Comparison:** When evaluating the two approaches with 100 iterations, the single SQL query utilizing a subquery and multiple joins (mean execution time $\approx 1.49$ milliseconds) significantly outperformed the method of extracting all constituent tables and joining them within R (mean execution time $\approx 20.91$ milliseconds).
 
 ```{r}
 # Method 1: Extract individual tables via SQL and process using R

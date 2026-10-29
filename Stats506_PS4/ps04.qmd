@@ -1,0 +1,205 @@
+---
+title: "Stats 506 Problem Set 4"
+author: "Honghao Wang"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+---
+
+GitHub Repo: <https://github.com/whonghao-code/stats506/tree/main>
+
+## **Problem 1**
+
+\(a\) The table shows the total votes for each year and voting type, sorted from highest to lowest.
+
+```{r}
+
+library(tidyverse)
+library(nzelect)
+
+ans_1a <- nzge %>%
+  group_by(election_year, voting_type) %>%
+  summarise(total_votes = sum(votes, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(total_votes))
+
+print(ans_1a)
+```
+
+\(b\) This table shows the 2014 Candidate election results.
+
+```{r}
+ans_1b <- nzge %>%
+  filter(election_year == "2014", voting_type == "Candidate") %>%
+  group_by(party) %>%
+  summarise(party_votes = sum(votes, na.rm = TRUE), .groups = "drop") %>%
+  mutate(percent_vote = (party_votes / sum(party_votes)) * 100) %>%
+  arrange(desc(percent_vote))
+
+print(ans_1b)
+```
+
+\(c\) This table shows which party won each year.
+
+```{r}
+ans_1c <- nzge %>%
+  group_by(election_year, voting_type, party) %>%
+  summarise(total_votes = sum(votes, na.rm = TRUE), .groups = "drop") %>%
+  group_by(election_year, voting_type) %>%
+  slice_max(order_by = total_votes, n = 1) %>%
+  select(election_year, voting_type, party) %>%
+  pivot_wider(names_from = voting_type, values_from = party)
+
+print(ans_1c)
+```
+
+## **Problem 2**
+
+\(a\) There were 128 tournaments in 2019.
+
+```{r}
+tennis <- read_csv("atp_matches_2019.csv")
+
+ans_2a <- tennis %>% 
+  summarise(num_tournaments = n_distinct(tourney_id))
+print(ans_2a)
+```
+
+\(b\) Yes, 12 players won more than one tournament. The most winning players were Dominic Thiem and Novak Djokovic, who both won 5 tournaments.
+
+```{r}
+tournament_winners <- tennis %>%
+  filter(round == "F") %>%
+  count(winner_name, name = "tournaments_won")
+
+multiple_winners_count <- tournament_winners %>% 
+  filter(tournaments_won > 1) %>% 
+  nrow()
+
+max_wins <- tournament_winners %>% 
+  slice_max(tournaments_won, n = 1)
+
+cat("Number of players who won >1 tournament:", multiple_winners_count, "\n")
+print(max_wins)
+```
+
+\(c\) Yes, there is evidence. On average, winners had 7.50 aces per match while losers had 5.79. Furthermore, the winner had more aces than the loser in 57.3% of the matches.
+
+```{r}
+ans_2c <- tennis %>%
+  select(w_ace, l_ace) %>%
+  drop_na() %>%
+  summarise(
+    mean_winner_aces = mean(w_ace),
+    mean_loser_aces = mean(l_ace),
+    matches_evaluated = n(),
+    winner_had_more = sum(w_ace > l_ace),
+    percent_winner_more = (winner_had_more / matches_evaluated) * 100
+  )
+print(ans_2c)
+```
+
+\(d\) Rafael Nadal had the highest win-rate among players with at least 5 matches. He won 60 out of 69 matches, giving him a win-rate of 87.0%
+
+```{r}
+wins <- tennis %>% count(winner_name, name = "wins")
+losses <- tennis %>% count(loser_name, name = "losses")
+
+ans_2d <- wins %>%
+  full_join(losses, by = c("winner_name" = "loser_name")) %>%
+  rename(player = winner_name) %>%
+  replace_na(list(wins = 0, losses = 0)) %>%
+  mutate(
+    total_matches = wins + losses,
+    win_rate = wins / total_matches
+  ) %>%
+  filter(total_matches >= 5) %>%
+  arrange(desc(win_rate)) %>% 
+  slice_max(win_rate, n = 1)
+
+print(ans_2d)
+```
+
+## **Problem 3**
+
+\(a\) Based on the plot, there is one massive major spike in early 2022. There are also about three or four minor spikes occurring around early 2021, late 2021, and mid-2022.
+
+```{r}
+library(lubridate)
+url <- "https://raw.githubusercontent.com/nytimes/covid-19-data/refs/heads/master/rolling-averages/us-states.csv"
+covid_data <- read_csv(url)
+
+us_totals <- covid_data %>%
+  group_by(date) %>%
+  summarise(total_cases_avg = sum(cases_avg, na.rm = TRUE)) 
+
+plot_a <- ggplot(us_totals, aes(x = date, y = total_cases_avg)) +
+  geom_area(fill = "steelblue", alpha = 0.5) +
+  geom_line(color = "#0B4275", size = 0.8) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "3a: Daily New COVID-19 Cases in the United States",
+       x = "Date",
+       y = "Average Daily New Cases") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+print(plot_a)
+
+
+```
+
+\(b\) The plot compares the states with the highest and lowest overall rates. The highest rate states (Rhode Island and American Samoa) show very sharp, extreme spikes, reaching over 400 daily cases per 100k. In contrast, the lowest rate states (Maine and Maryland) have much flatter curves with much lower peaks over time.
+
+```{r}
+overall_rates <- covid_data %>%
+  group_by(state) %>%
+  summarise(mean_rate = mean(cases_avg_per_100k, na.rm = TRUE))
+
+top_states <- overall_rates %>% slice_max(mean_rate, n = 2) %>% pull(state)
+bottom_states <- overall_rates %>% slice_min(mean_rate, n = 2) %>% pull(state)
+target_states <- c(top_states, bottom_states)
+
+plot_b <- covid_data %>%
+  filter(state %in% target_states) %>%
+  mutate(Status = ifelse(state %in% top_states, "Highest Rate States", "Lowest Rate States")) %>%
+  ggplot(aes(x = date, y = cases_avg_per_100k, color = state)) +
+  geom_line(size = 0.8, alpha = 0.8) +
+  facet_wrap(~Status, ncol = 1, scales = "free_y") +
+  labs(title = "3b: COVID-19 Trajectories: Highest vs Lowest Infection Rates",
+       x = "Date",
+       y = "Daily Cases per 100k Population",
+       color = "State") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14),
+        legend.position = "bottom")
+
+print(plot_b)
+```
+
+\(c\) By defining a "substantial" outbreak as reaching 5 daily cases per 100k population, the first five states to hit this mark were Connecticut, Louisiana, Massachusetts, New Jersey, and New York. The graph shows their case rates shooting up very quickly between March and April 2020.
+
+```{r}
+first_substantial <- covid_data %>%
+  filter(cases_avg_per_100k >= 5) %>%
+  group_by(state) %>%
+  summarise(first_date = min(date)) %>%
+  arrange(first_date) %>%
+  slice_head(n = 5) %>%
+  pull(state)
+
+plot_c <- covid_data %>%
+  filter(state %in% first_substantial, date <= as.Date("2020-06-01")) %>%
+  ggplot(aes(x = date, y = cases_avg_per_100k, color = state)) +
+  geom_line(size = 1.2) +
+  geom_point(data = . %>% filter(cases_avg_per_100k >= 5) %>% group_by(state) %>% slice_head(n=1), 
+             size = 3) + 
+  labs(title = "3c: First Five States to Experience Substantial Outbreaks",
+       subtitle = "Early 2020: First to surpass 5 daily cases per 100k population",
+       x = "Date",
+       y = "Daily Cases per 100k Population",
+       color = "State") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+print(plot_c)
+```

@@ -1,0 +1,659 @@
+---
+title: "Stats 506 Problem Set 5"
+author: "Honghao Wang"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+---
+
+GitHub Repo: <https://github.com/whonghao-code/stats506/tree/main>
+
+## **Problem 1**
+
+a.1 Code is provided below
+
+```{r}
+library(methods)
+
+# Define the S4 class using bounds and confidence level.
+setClass(
+  "waldCI",
+  slots = c(
+    lower = "numeric",
+    upper = "numeric",
+    confidence = "numeric"
+  )
+)
+
+# Calculate the normal critical value.
+normal_critical <- function(level) {
+  qnorm((1 - level) / 2, lower.tail = FALSE)
+}
+
+#' Construct a Wald confidence interval
+#' @param level Confidence level in (0, 1).
+#' @param mean Estimated mean.
+#' @param sterr Nonnegative standard error.
+#' @param lb Lower bound.
+#' @param ub Upper bound.
+#' @return A validated waldCI object.
+make_waldCI <- function(level, mean = NULL, sterr = NULL,
+                        lb = NULL, ub = NULL) {
+  
+  if (level <= 0 || level >= 1) {
+    stop("Confidence level must be between 0 and 1.")
+  }
+  
+  # Compute bounds when the mean and standard error are supplied.
+  if (!is.null(mean)) {
+    if (sterr < 0) {
+      stop("Standard error cannot be negative.")
+    }
+    z <- qnorm(1 - (1 - level) / 2)
+    lb <- mean - z * sterr
+    ub <- mean + z * sterr
+  }
+  
+  new(
+    "waldCI",
+    lower = lb,
+    upper = ub,
+    confidence = level
+  )
+}
+  
+```
+
+a.2 Code is provided below
+
+```{r}
+# Validate the required interval properties.
+setValidity("waldCI", function(object) {
+  if (object@confidence <= 0 || object@confidence >= 1) {
+    return("Confidence level must be between 0 and 1.")
+  }
+  
+  if (!is.finite(object@lower) || !is.finite(object@upper)) {
+    return("Bounds must be finite.")
+  }
+  
+  # Ordered bounds also imply a nonnegative standard error.
+  if (object@lower > object@upper) {
+    return("Lower bound cannot exceed upper bound.")
+  }
+  
+  TRUE
+})
+```
+
+a.3 Code is provided below
+
+```{r}
+# Display the interval and its confidence level.
+setMethod("show", "waldCI", function(object) {
+  cat(
+    sprintf(
+      "Wald confidence interval: [%g, %g], confidence level: %g%%\n",
+      object@lower,
+      object@upper,
+      100 * object@confidence
+    )
+  )
+})
+```
+
+a.4 Code is provided below
+
+```{r}
+# Extract the lower bound.
+setGeneric("lb", function(object) standardGeneric("lb"))
+setMethod("lb", "waldCI", function(object) {
+  object@lower
+})
+
+# Extract the upper bound.
+setGeneric("ub", function(object) standardGeneric("ub"))
+setMethod("ub", "waldCI", function(object) {
+  object@upper
+})
+
+# Calculate the interval midpoint.
+setMethod("mean", "waldCI", function(x, ...) {
+  (x@lower + x@upper) / 2
+})
+
+# Calculate the implied standard error.
+setGeneric("sterr", function(object) standardGeneric("sterr"))
+setMethod("sterr", "waldCI", function(object) {
+  z <- qnorm(1 - (1 - object@confidence) / 2)
+  (object@upper - object@lower) / (2 * z)
+})
+
+# Extract the confidence level.
+setGeneric("level", function(object) standardGeneric("level"))
+setMethod("level", "waldCI", function(object) {
+  object@confidence
+})
+```
+
+a.5 Code is provided below
+
+```{r}
+# Change the lower bound and validate the result.
+setGeneric("lb<-", function(object, value) standardGeneric("lb<-"))
+setReplaceMethod("lb", "waldCI", function(object, value) {
+  object@lower <- value
+  validObject(object)
+  object
+})
+
+# Change the upper bound and validate the result.
+setGeneric("ub<-", function(object, value) standardGeneric("ub<-"))
+setReplaceMethod("ub", "waldCI", function(object, value) {
+  object@upper <- value
+  validObject(object)
+  object
+})
+
+# Change the mean while keeping the standard error and level fixed.
+setGeneric("mean<-", function(x, value) standardGeneric("mean<-"))
+setReplaceMethod("mean", "waldCI", function(x, value) {
+  make_waldCI(
+    level = level(x),
+    mean = value,
+    sterr = sterr(x)
+  )
+})
+
+# Change the standard error while keeping the mean and level fixed.
+setGeneric("sterr<-", function(object, value) standardGeneric("sterr<-"))
+setReplaceMethod("sterr", "waldCI", function(object, value) {
+  make_waldCI(
+    level = level(object),
+    mean = mean(object),
+    sterr = value
+  )
+})
+
+# Change the level while keeping the mean and standard error fixed.
+setGeneric("level<-", function(object, value) standardGeneric("level<-"))
+setReplaceMethod("level", "waldCI", function(object, value) {
+  make_waldCI(
+    level = value,
+    mean = mean(object),
+    sterr = sterr(object)
+  )
+})
+```
+
+a.6 Code is provided below
+
+```{r}
+# Include both endpoints when checking membership.
+setGeneric(
+  "contains",
+  function(object, value) standardGeneric("contains")
+)
+setMethod("contains", "waldCI", function(object, value) {
+  value >= lb(object) & value <= ub(object)
+})
+```
+
+a.7 Code is provided below
+
+```{r}
+# Intervals overlap when they share at least one point.
+setGeneric("overlap", function(x, y) standardGeneric("overlap"))
+setMethod(
+  "overlap",
+  signature(x = "waldCI", y = "waldCI"),
+  function(x, y) {
+    max(lb(x), lb(y)) <= min(ub(x), ub(y))
+  }
+)
+```
+
+a.8 Code is provided below
+
+```{r}
+# Register the generic for the existing primitive function.
+setGeneric("as.numeric")
+# Return c(lower bound, upper bound).
+setMethod("as.numeric", "waldCI", function(x, ...) {
+  c(lb(x), ub(x))
+})
+```
+
+a.9 Code is provided below
+
+```{r}
+#' Transform a confidence interval
+#' @param object A waldCI object. 
+#' @param fun A monotonic function.
+#' @return The transformed waldCI object.
+setGeneric(
+  "transformCI",
+  function(object, fun) standardGeneric("transformCI")
+)
+setMethod("transformCI", "waldCI", function(object, fun) {
+  # Warn about monotonicity without checking it automatically.
+  warning(
+    "Only monotonic functions on the interval make sense.",
+    call. = FALSE
+  )
+  
+  
+  
+  # Evaluate the function at 1001 equally spaced points.
+  x <- seq(lb(object), ub(object), length.out = 1001)
+  y <- vapply(x, fun, numeric(1))
+  # Reject undefined or infinite transformed values.
+  if (any(!is.finite(y))) {
+    stop("The function must have finite values on the interval.")
+  }
+  # Check whether sampled values are nondecreasing or nonincreasing.
+  changes <- diff(y)
+  if (!(all(changes >= 0) || all(changes <= 0))) {
+    stop("The function is not monotonic on the sampled points.")
+  }
+  
+  
+  
+  # Sort transformed endpoints to support decreasing functions.
+  bounds <- sort(c(fun(lb(object)), fun(ub(object))))
+  # Preserve the confidence level.
+  make_waldCI(
+    level = level(object),
+    lb = bounds[1],
+    ub = bounds[2]
+  )
+})
+```
+
+b\. Code is provided below
+
+```{r}
+ci1 <- make_waldCI(level = 0.95, lb = 17.2, ub = 24.7)
+ci2 <- make_waldCI(level = 0.99, mean = 13, sterr = 2.5)
+ci3 <- make_waldCI(level = 0.75, lb = 27.43, ub = 39.22)
+```
+
+test code
+
+```{r}
+ci1
+ci2
+ci3
+as.numeric(ci1)
+as.numeric(ci2)
+as.numeric(ci3)
+lb(ci2)
+ub(ci2)
+mean(ci1)
+sterr(ci3)
+level(ci2)
+lb(ci2) <- 10.5
+mean(ci3) <- 34
+level(ci3) <- .8
+contains(ci1, 17)
+contains(ci3, 44)
+overlap(ci1, ci2)
+eci1 <- transformCI(ci1, sqrt)
+eci1
+mean(transformCI(ci2, log))
+```
+
+c\. Code is provided below
+
+```{r}
+# Reject a negative standard error.
+try(
+  make_waldCI(level = 0.95, mean = 10, sterr = -2)
+)
+
+# Reject a lower bound greater than the upper bound.
+try(
+  make_waldCI(level = 0.95, lb = 20, ub = 10)
+)
+
+# Reject infinite bounds.
+try(
+  make_waldCI(level = 0.95, lb = -Inf, ub = 10)
+)
+try(
+  make_waldCI(level = 0.95, lb = 0, ub = Inf)
+)
+
+# Create a separate object for testing the setters.
+test_ci <- make_waldCI(level = 0.95, lb = 10, ub = 20)
+
+# Reject a lower bound greater than the current upper bound.
+try(lb(test_ci) <- 25)
+# Reject an upper bound less than the current lower bound.
+try(ub(test_ci) <- 5)
+# Reject infinite bounds.
+try(mean(test_ci) <- Inf)
+try(ub(test_ci) <- Inf)
+# Reject a negative standard error.
+try(sterr(test_ci) <- -1)
+# Reject confidence levels outside the open interval (0, 1).
+try(level(test_ci) <- 0)
+try(level(test_ci) <- 1)
+# Failed assignments leave the original object valid.
+test_ci
+validObject(test_ci)
+```
+
+## **Problem 2**
+
+a\. There were 128 tournaments in 2019.
+
+```{r}
+library(data.table)
+tennis <- fread("atp_matches_2019.csv")
+ans_2a <- tennis[, .(
+  number_of_tournaments = uniqueN(tourney_id)
+)]
+ans_2a
+```
+
+b\. Yes, 12 players won more than one tournament. The most winning players were Dominic Thiem and Novak Djokovic, who both won 5 tournaments.
+
+```{r}
+# Extract tournament champions from final-round matches.
+champions <- unique(
+  tennis[round == "F", .(
+    tourney_id,
+    winner_id,
+    winner_name
+  )]
+)
+
+# Count titles for each player using the player ID.
+title_counts <- champions[, .(
+  player = winner_name[1],
+  titles = .N
+), by = winner_id]
+setorder(title_counts, -titles, player)
+
+# Count players who won more than one tournament.
+ans_2b <- title_counts[, .(
+  any_multiple_winners = any(titles > 1),
+  number_of_multiple_winners = sum(titles > 1),
+  maximum_titles = max(titles)
+)]
+
+ans_2b
+title_counts[titles == max(titles)]
+title_counts[titles > 1]
+
+```
+
+c\. Yes, there is evidence. On average, winners had 7.50 aces per match while losers had 5.79. Furthermore, the winner had more aces than the loser in 57.3% of the matches.
+
+```{r}
+# Keep matches with ace counts available for both players.
+ace_matches <- tennis[
+  !is.na(w_ace) & !is.na(l_ace)
+]
+
+# Compare winners and losers within the same matches.
+ans_2c <- ace_matches[, .(
+  matches_used = .N,
+  mean_winner_aces = mean(w_ace),
+  mean_loser_aces = mean(l_ace),
+  mean_difference = mean(w_ace - l_ace),
+  median_difference = median(w_ace - l_ace),
+  winner_more_pct = 100 * mean(w_ace > l_ace),
+  equal_aces_pct = 100 * mean(w_ace == l_ace),
+  loser_more_pct = 100 * mean(w_ace < l_ace)
+)]
+ans_2c
+```
+
+d\. Rafael Nadal had the highest win-rate among players with at least 5 matches. He won 60 out of 69 matches, giving him a win-rate of 87.0%
+
+```{r}
+# Record one appearance for each match winner.
+winner_records <- tennis[, .(
+  player_id = winner_id,
+  player = winner_name,
+  won = 1L
+)]
+# Record one appearance for each match loser.
+loser_records <- tennis[, .(
+  player_id = loser_id,
+  player = loser_name,
+  won = 0L
+)]
+# Combine appearances and calculate each player's record.
+player_records <- rbindlist(
+  list(winner_records, loser_records)
+)
+player_summary <- player_records[, .(
+  player = player[1],
+  wins = sum(won),
+  losses = .N - sum(won),
+  matches = .N,
+  win_rate = mean(won)
+), by = player_id]
+# Restrict the comparison to players with at least five matches.
+eligible_players <- player_summary[matches >= 5]
+ans_2d <- eligible_players[win_rate == max(win_rate)]
+ans_2d
+```
+
+## **Problem 3**
+
+```{r}
+library(plotly)
+covid <- fread(
+  "https://raw.githubusercontent.com/nytimes/covid-19-data/refs/heads/master/rolling-averages/us-states.csv"
+)
+covid[, date := as.Date(date)]
+
+# Restrict the analysis to the 50 states.
+covid <- covid[state %in% state.name]
+setorder(covid, state, date)
+
+# Define a shared plot style.
+style_plot <- function(p, title, y_title) {
+  p <- layout(
+    p,
+    title = list(
+      text = title,
+      x = 0,
+      font = list(size = 19)
+    ),
+    xaxis = list(
+      title = "",
+      showgrid = FALSE,
+      zeroline = FALSE
+    ),
+    yaxis = list(
+      title = y_title,
+      gridcolor = "#E5E7EB",
+      zeroline = FALSE,
+      separatethousands = TRUE
+    ),
+    font = list(family = "Arial", size = 13),
+    paper_bgcolor = "white",
+    plot_bgcolor = "white",
+    hovermode = "x unified",
+    legend = list(title = list(text = "")),
+    margin = list(t = 95, b = 65, l = 85, r = 30),
+    annotations = list(
+      list(
+        text = "Source: The New York Times | 50 U.S. states",
+        x = 0,
+        y = -0.18,
+        xref = "paper",
+        yref = "paper",
+        showarrow = FALSE,
+        xanchor = "left",
+        font = list(size = 11, color = "#666666")
+      )
+    )
+  )
+  config(p, displaylogo = FALSE)
+}
+```
+
+a\. Based on the plot, there is one massive major spike in early 2022. There are also three minor spikes occurring around early 2021, late 2021, and mid-2022.
+
+```{r}
+# Sum the state-level seven-day averages for each date.
+national <- covid[, .(
+  daily_cases_avg = sum(cases_avg, na.rm = TRUE)
+), by = date]
+setorder(national, date)
+p3a <- plot_ly(
+  data = national,
+  x = ~date,
+  y = ~daily_cases_avg,
+  type = "scatter",
+  mode = "lines",
+  line = list(color = "#2563EB", width = 2),
+  fill = "tozeroy",
+  fillcolor = "rgba(37, 99, 235, 0.12)",
+  name = "Daily cases",
+  hovertemplate = paste(
+    "%{x|%Y-%m-%d}",
+    "<br>7-day average: %{y:,.0f}",
+    "<extra></extra>"
+  )
+)
+p3a <- style_plot(
+  p3a,
+  "COVID-19 waves in the United States",
+  "Daily new cases (7-day average)"
+)
+
+p3a
+```
+
+b\. The plot compares the states with the highest and lowest overall rates. The highest rate states (Rhode Island and Alaska) show very sharp, extreme spikes, reaching over 300 daily cases per 100k. In contrast, the lowest rate states (Maine and Maryland) have much flatter curves with much lower peaks over time.
+
+```{r}
+# Use a common number of calendar days for all states.
+study_days <- as.integer(
+  max(covid$date) - min(covid$date)
+) + 1L
+
+# Calculate the overall average daily rate per 100,000 people.
+overall_rates <- covid[, .(
+  overall_daily_rate = sum(
+    cases_avg_per_100k,
+    na.rm = TRUE
+  ) / study_days
+), by = state]
+setorder(overall_rates, -overall_daily_rate)
+
+# Select the two highest-rate and two lowest-rate states.
+highest_states <- head(overall_rates, 2)
+lowest_states <- tail(overall_rates, 2)
+selected_states <- c(
+  highest_states$state,
+  lowest_states$state
+)
+comparison <- covid[state %in% selected_states]
+
+p3b <- plot_ly(
+  data = comparison,
+  x = ~date,
+  y = ~cases_avg_per_100k,
+  color = ~state,
+  colors = c("#2563EB", "#D97706", "#059669", "#9333EA"),
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2),
+  text = ~state,
+  hovertemplate = paste(
+    "%{text}",
+    "<br>%{x|%Y-%m-%d}",
+    "<br>Cases per 100,000: %{y:.2f}",
+    "<extra></extra>"
+  )
+)
+p3b <- style_plot(
+  p3b,
+  paste0(
+    "COVID-19 trajectories: highest and lowest overall rates",
+    "<br><sup>Selected using the period-average daily rate per 100,000</sup>"
+  ),
+  "Daily cases per 100,000 (7-day average)"
+)
+
+p3b
+```
+
+c\. By defining a “substantial” outbreak as reaching 5 daily cases per 100k population, the first five states to hit this mark were Connecticut, Louisiana, Massachusetts, New Jersey, and New York. The graph shows their case rates shooting up very quickly between March and April 2020. (There was a tie in the outbreak date for fifth place, so ties were broken alphabetically by state name.)
+
+```{r}
+# Define a substantial outbreak as at least 5 daily cases per 100,000.
+threshold <- 5
+
+# Find the first date each state reaches the threshold.
+first_outbreak <- covid[
+  cases_avg_per_100k >= threshold,
+  .(first_date = min(date)),
+  by = state
+]
+setorder(first_outbreak, first_date, state)
+
+cutoff_date <- first_outbreak$first_date[5]
+first_states <- head(first_outbreak, 5)
+early_data <- covid[
+  state %in% first_states$state &
+    date <= as.Date("2020-06-30")
+]
+
+p3c <- plot_ly(
+  data = early_data,
+  x = ~date,
+  y = ~cases_avg_per_100k,
+  color = ~state,
+  type = "scatter",
+  mode = "lines",
+  line = list(width = 2),
+  text = ~state,
+  hovertemplate = paste(
+    "%{text}",
+    "<br>%{x|%Y-%m-%d}",
+    "<br>Cases per 100,000: %{y:.2f}",
+    "<extra></extra>"
+  )
+)
+p3c <- style_plot(
+  p3c,
+  paste0(
+    "States reaching a substantial outbreak earliest",
+    "<br><sup>Threshold: 5 daily cases per 100,000; includes ties at fifth place</sup>"
+  ),
+  "Daily cases per 100,000 (7-day average)"
+)
+
+# Mark the outbreak threshold with a horizontal dashed line.
+p3c <- layout(
+  p3c,
+  shapes = list(
+    list(
+      type = "line",
+      xref = "paper",
+      x0 = 0,
+      x1 = 1,
+      yref = "y",
+      y0 = threshold,
+      y1 = threshold,
+      line = list(
+        color = "#666666",
+        width = 1,
+        dash = "dash"
+      )
+    )
+  )
+)
+
+p3c
+```
